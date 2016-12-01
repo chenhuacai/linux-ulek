@@ -174,8 +174,6 @@ int process_fpemu_return(int sig, void __user *fault_addr,
 			 unsigned long fcr31);
 int isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 		  unsigned long *contpc);
-int mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
-		     unsigned long *contpc);
 
 /*
  * Mask the FCSR Cause bits according to the Enable bits, observing
