@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) Lemote, Inc.
+ * Author: Huacai Chen <chenhc@lemote.com>
+ */
 #include <linux/types.h>
 #include <linux/pci.h>
 #include <linux/kernel.h>
@@ -13,13 +17,13 @@
 #define HT1LO_PCICFG_BASE      0x1a000000
 #define HT1LO_PCICFG_BASE_TP1  0x1b000000
 
-static int loongson3_pci_config_access(unsigned char access_type,
+static int rs780_pci_config_access(unsigned char access_type,
 		struct pci_bus *bus, unsigned int devfn,
 		int where, u32 *data)
 {
 	unsigned char busnum = bus->number;
-	int function = PCI_FUNC(devfn);
 	int device = PCI_SLOT(devfn);
+	int function = PCI_FUNC(devfn);
 	int reg = where & ~3;
 	void *addrp;
 	u64 addr;
@@ -62,11 +66,11 @@ static int loongson3_pci_config_access(unsigned char access_type,
 	return PCIBIOS_SUCCESSFUL;
 }
 
-static int loongson3_pci_pcibios_read(struct pci_bus *bus, unsigned int devfn,
+static int rs780_pci_pcibios_read(struct pci_bus *bus, unsigned int devfn,
 				 int where, int size, u32 *val)
 {
 	u32 data = 0;
-	int ret = loongson3_pci_config_access(PCI_ACCESS_READ,
+	int ret = rs780_pci_config_access(PCI_ACCESS_READ,
 			bus, devfn, where, &data);
 
 	if (ret != PCIBIOS_SUCCESSFUL)
@@ -82,7 +86,7 @@ static int loongson3_pci_pcibios_read(struct pci_bus *bus, unsigned int devfn,
 	return PCIBIOS_SUCCESSFUL;
 }
 
-static int loongson3_pci_pcibios_write(struct pci_bus *bus, unsigned int devfn,
+static int rs780_pci_pcibios_write(struct pci_bus *bus, unsigned int devfn,
 				  int where, int size, u32 val)
 {
 	u32 data = 0;
@@ -91,7 +95,7 @@ static int loongson3_pci_pcibios_write(struct pci_bus *bus, unsigned int devfn,
 	if (size == 4)
 		data = val;
 	else {
-		ret = loongson3_pci_config_access(PCI_ACCESS_READ,
+		ret = rs780_pci_config_access(PCI_ACCESS_READ,
 				bus, devfn, where, &data);
 		if (ret != PCIBIOS_SUCCESSFUL)
 			return ret;
@@ -104,13 +108,13 @@ static int loongson3_pci_pcibios_write(struct pci_bus *bus, unsigned int devfn,
 			    (val << ((where & 3) << 3));
 	}
 
-	ret = loongson3_pci_config_access(PCI_ACCESS_WRITE,
+	ret = rs780_pci_config_access(PCI_ACCESS_WRITE,
 			bus, devfn, where, &data);
 
 	return ret;
 }
 
-struct pci_ops loongson_pci_ops = {
-	.read = loongson3_pci_pcibios_read,
-	.write = loongson3_pci_pcibios_write
+struct pci_ops rs780_pci_ops = {
+	.read = rs780_pci_pcibios_read,
+	.write = rs780_pci_pcibios_write
 };

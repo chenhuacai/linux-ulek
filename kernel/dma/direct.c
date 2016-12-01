@@ -324,9 +324,10 @@ EXPORT_SYMBOL(dma_direct_unmap_sg);
 #endif
 
 static inline bool dma_direct_possible(struct device *dev, dma_addr_t dma_addr,
-		size_t size)
+		size_t size, unsigned long attrs)
 {
-	return swiotlb_force != SWIOTLB_FORCE &&
+	int dev_swiotlb_force = attrs & DMA_ATTR_FORCE_SWIOTLB;
+	return swiotlb_force != SWIOTLB_FORCE && !dev_swiotlb_force &&
 		dma_capable(dev, dma_addr, size);
 }
 
@@ -337,7 +338,7 @@ dma_addr_t dma_direct_map_page(struct device *dev, struct page *page,
 	phys_addr_t phys = page_to_phys(page) + offset;
 	dma_addr_t dma_addr = phys_to_dma(dev, phys);
 
-	if (unlikely(!dma_direct_possible(dev, dma_addr, size)) &&
+	if (unlikely(!dma_direct_possible(dev, dma_addr, size, attrs)) &&
 	    !swiotlb_map(dev, &phys, &dma_addr, size, dir, attrs)) {
 		report_addr(dev, dma_addr, size);
 		return DMA_MAPPING_ERROR;
@@ -375,6 +376,9 @@ dma_addr_t dma_direct_map_resource(struct device *dev, phys_addr_t paddr,
 		size_t size, enum dma_data_direction dir, unsigned long attrs)
 {
 	dma_addr_t dma_addr = paddr;
+
+	if (attrs & DMA_ATTR_FORCE_SWIOTLB)
+		return DMA_MAPPING_ERROR;
 
 	if (unlikely(!dma_capable(dev, dma_addr, size))) {
 		report_addr(dev, dma_addr, size);

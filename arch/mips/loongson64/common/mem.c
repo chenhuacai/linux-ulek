@@ -73,10 +73,14 @@ void __init prom_init_memory(void)
 
 		switch (mem_type) {
 		case SYSTEM_RAM_LOW:
+			loongson_sysconf.low_physmem_start =
+				loongson_memmap->map[i].mem_start;
 			memblock_add(loongson_memmap->map[i].mem_start,
 				(u64)loongson_memmap->map[i].mem_size << 20);
 			break;
 		case SYSTEM_RAM_HIGH:
+			loongson_sysconf.high_physmem_start =
+				loongson_memmap->map[i].mem_start;
 			memblock_add(loongson_memmap->map[i].mem_start,
 				(u64)loongson_memmap->map[i].mem_size << 20);
 			break;
