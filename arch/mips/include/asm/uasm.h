@@ -162,6 +162,7 @@ Ip_u2s3u1(_sd);
 Ip_u3u1u2(_seleqz);
 Ip_u3u1u2(_selnez);
 Ip_u2s3u1(_sh);
+Ip_u4u2u1s3(_gslq);
 Ip_u4u2u1s3(_gssq);
 Ip_u2u1u3(_sll);
 Ip_u3u2u1(_sllv);
