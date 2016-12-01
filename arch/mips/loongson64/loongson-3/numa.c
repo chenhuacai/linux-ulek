@@ -177,6 +177,22 @@ static void __init szmem(unsigned int node)
 			systab_addr = mem_start;
 			memblock_reserve(((node_id << 44) + mem_start), 0x2000);
 			break;
+		case UMA_VIDEO_RAM:
+			loongson_sysconf.vram_type = VRAM_TYPE_UMA;
+			loongson_sysconf.uma_vram_addr = mem_start;
+			loongson_sysconf.uma_vram_size = mem_size << 20;
+			start_pfn = ((node_id << 44) + mem_start) >> PAGE_SHIFT;
+			node_psize = (mem_size << 20) >> PAGE_SHIFT;
+			end_pfn  = start_pfn + node_psize;
+			memblock_add_node(PFN_PHYS(start_pfn),
+				PFN_PHYS(end_pfn - start_pfn), node);
+			break;
+		case VUMA_VIDEO_RAM:
+			loongson_sysconf.vram_type = VRAM_TYPE_UMA;
+			loongson_sysconf.vuma_vram_addr = mem_start;
+			loongson_sysconf.vuma_vram_size = mem_size << 20;
+			memblock_reserve(((node_id << 44) + mem_start), mem_size << 20);
+			break;
 		}
 	}
 }

@@ -93,6 +93,20 @@ void __init prom_init_memory(void)
 			systab_addr = loongson_memmap->map[i].mem_start;
 			memblock_reserve(loongson_memmap->map[i].mem_start, 0x2000);
 			break;
+		case UMA_VIDEO_RAM:
+			loongson_sysconf.vram_type = VRAM_TYPE_UMA;
+			loongson_sysconf.uma_vram_addr = loongson_memmap->map[i].mem_start;
+			loongson_sysconf.uma_vram_size = loongson_memmap->map[i].mem_size << 20;
+			memblock_add(loongson_memmap->map[i].mem_start,
+				(u64)loongson_memmap->map[i].mem_size << 20);
+			break;
+		case VUMA_VIDEO_RAM:
+			loongson_sysconf.vram_type = VRAM_TYPE_UMA;
+			loongson_sysconf.vuma_vram_addr = loongson_memmap->map[i].mem_start;
+			loongson_sysconf.vuma_vram_size = loongson_memmap->map[i].mem_size << 20;
+			memblock_reserve(loongson_memmap->map[i].mem_start,
+				(u64)loongson_memmap->map[i].mem_size << 20);
+			break;
 		}
 	}
 }
