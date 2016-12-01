@@ -227,6 +227,11 @@
 #define __LLSC_CLOBBER		"memory"
 #endif
 
+#ifdef CONFIG_LOONGSON3_ENHANCEMENT
+#undef  smp_llsc_mb
+#define smp_llsc_mb()	__asm__ __volatile__(".set mips64r2\n synci 0\n .set mips0\n" : : :"memory")
+#endif
+
 #ifdef CONFIG_CPU_CAVIUM_OCTEON
 #define smp_mb__before_llsc() smp_wmb()
 #define __smp_mb__before_llsc() __smp_wmb()
