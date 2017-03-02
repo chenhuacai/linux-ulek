@@ -37,6 +37,7 @@
 #include <drm/drm_cache.h>
 #include <drm/drm_prime.h>
 #include <drm/radeon_drm.h>
+#include <asm/dma-coherence.h>
 
 #include "radeon.h"
 #include "radeon_trace.h"
@@ -117,10 +118,16 @@ void radeon_ttm_placement_from_domain(struct radeon_bo *rbo, u32 domain)
 						     TTM_PL_FLAG_VRAM;
 		}
 
-		rbo->placements[c].fpfn = 0;
-		rbo->placements[c++].flags = TTM_PL_FLAG_WC |
-					     TTM_PL_FLAG_UNCACHED |
-					     TTM_PL_FLAG_VRAM;
+		if (rbo->flags & RADEON_GEM_GTT_WC) {
+			rbo->placements[c].fpfn = 0;
+			rbo->placements[c++].flags = TTM_PL_FLAG_WC |
+						     TTM_PL_FLAG_UNCACHED |
+						     TTM_PL_FLAG_VRAM;
+		} else {
+			rbo->placements[c].fpfn = 0;
+			rbo->placements[c++].flags = TTM_PL_FLAG_UNCACHED |
+						     TTM_PL_FLAG_VRAM;
+		}
 	}
 
 	if (domain & RADEON_GEM_DOMAIN_GTT) {
@@ -135,9 +142,13 @@ void radeon_ttm_placement_from_domain(struct radeon_bo *rbo, u32 domain)
 			rbo->placements[c++].flags = TTM_PL_FLAG_WC |
 				TTM_PL_FLAG_UNCACHED |
 				TTM_PL_FLAG_TT;
-		} else {
+		} else if (dev_is_dma_coherent(NULL)) {
 			rbo->placements[c].fpfn = 0;
 			rbo->placements[c++].flags = TTM_PL_FLAG_CACHED |
+						     TTM_PL_FLAG_TT;
+		} else {
+			rbo->placements[c].fpfn = 0;
+			rbo->placements[c++].flags = TTM_PL_FLAG_UNCACHED |
 						     TTM_PL_FLAG_TT;
 		}
 	}
@@ -154,16 +165,24 @@ void radeon_ttm_placement_from_domain(struct radeon_bo *rbo, u32 domain)
 			rbo->placements[c++].flags = TTM_PL_FLAG_WC |
 				TTM_PL_FLAG_UNCACHED |
 				TTM_PL_FLAG_SYSTEM;
-		} else {
+		} else if (dev_is_dma_coherent(NULL)) {
 			rbo->placements[c].fpfn = 0;
 			rbo->placements[c++].flags = TTM_PL_FLAG_CACHED |
+						     TTM_PL_FLAG_SYSTEM;
+		} else {
+			rbo->placements[c].fpfn = 0;
+			rbo->placements[c++].flags = TTM_PL_FLAG_UNCACHED |
 						     TTM_PL_FLAG_SYSTEM;
 		}
 	}
 	if (!c) {
 		rbo->placements[c].fpfn = 0;
-		rbo->placements[c++].flags = TTM_PL_MASK_CACHING |
-					     TTM_PL_FLAG_SYSTEM;
+		if (dev_is_dma_coherent(NULL))
+			rbo->placements[c++].flags = TTM_PL_MASK_CACHING |
+						     TTM_PL_FLAG_SYSTEM;
+		else
+			rbo->placements[c++].flags = TTM_PL_FLAG_WC | TTM_PL_FLAG_UNCACHED |
+						     TTM_PL_FLAG_SYSTEM;
 	}
 
 	rbo->placement.num_placement = c;
