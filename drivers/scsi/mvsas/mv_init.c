@@ -10,7 +10,11 @@
 
 #include "mv_sas.h"
 
+#ifdef CONFIG_CPU_LOONGSON3
+int interrupt_coalescing = 0x08;
+#else
 int interrupt_coalescing = 0x80;
+#endif
 
 static struct scsi_transport_template *mvs_stt;
 static const struct mvs_chip_info mvs_chips[] = {
@@ -34,7 +38,7 @@ static struct scsi_host_template mvs_sht = {
 	.name			= DRV_NAME,
 	.queuecommand		= sas_queuecommand,
 	.target_alloc		= sas_target_alloc,
-	.slave_configure	= sas_slave_configure,
+	.slave_configure	= mvs_slave_configure,
 	.scan_finished		= mvs_scan_finished,
 	.scan_start		= mvs_scan_start,
 	.change_queue_depth	= sas_change_queue_depth,
