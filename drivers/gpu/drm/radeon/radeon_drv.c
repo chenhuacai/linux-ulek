@@ -50,6 +50,7 @@
 #include <drm/drm_vblank.h>
 #include <drm/radeon_drm.h>
 
+#include "radeon.h"
 #include "radeon_drv.h"
 
 /*
@@ -418,15 +419,9 @@ radeon_pci_remove(struct pci_dev *pdev)
 static void
 radeon_pci_shutdown(struct pci_dev *pdev)
 {
-#ifdef CONFIG_PPC64
 	struct drm_device *ddev = pci_get_drvdata(pdev);
-#endif
-
-	/* if we are running in a VM, make sure the device
-	 * torn down properly on reboot/shutdown
-	 */
-	if (radeon_device_is_virtual())
-		radeon_pci_remove(pdev);
+	struct drm_connector *connector;
+	struct radeon_device *rdev = ddev->dev_private;
 
 #ifdef CONFIG_PPC64
 	/* Some adapters need to be suspended before a
@@ -436,6 +431,17 @@ radeon_pci_shutdown(struct pci_dev *pdev)
 	 * some non-power boards.
 	 */
 	radeon_suspend_kms(ddev, true, true, false);
+#else
+	drm_modeset_lock_all(ddev);
+	list_for_each_entry(connector, &ddev->mode_config.connector_list, head)
+		drm_helper_connector_dpms(connector, DRM_MODE_DPMS_OFF);
+	drm_modeset_unlock_all(ddev);
+
+	radeon_suspend(rdev);
+
+	console_lock();
+	radeon_fbdev_set_suspend(rdev, 1);
+	console_unlock();
 #endif
 }
 
