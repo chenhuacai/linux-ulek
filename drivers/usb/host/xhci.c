@@ -2869,6 +2869,8 @@ static int xhci_check_bandwidth(struct usb_hcd *hcd, struct usb_device *udev)
 	struct xhci_input_control_ctx *ctrl_ctx;
 	struct xhci_slot_ctx *slot_ctx;
 	struct xhci_command *command;
+	u8 reg8;
+	unsigned long flags;
 
 	ret = xhci_check_args(hcd, udev, NULL, 0, true, __func__);
 	if (ret <= 0)
@@ -2951,6 +2953,17 @@ static int xhci_check_bandwidth(struct usb_hcd *hcd, struct usb_device *udev)
 		virt_dev->eps[i].new_ring = NULL;
 	}
 command_cleanup:
+	if (xhci->quirks & XHCI_ETRON_HOST) {
+		spin_lock_irqsave(&xhci->lock, flags);
+		hcd = xhci_to_hcd(xhci);
+		reg8 = readb(hcd->regs + 0x4300);
+		if (reg8 & 0x04) {
+			reg8 &= ~0x04;
+			writeb(reg8, hcd->regs + 0x4300);
+		}
+		spin_unlock_irqrestore(&xhci->lock, flags);
+	}
+
 	kfree(command->completion);
 	kfree(command);
 
