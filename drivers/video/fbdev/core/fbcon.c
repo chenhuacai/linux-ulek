@@ -1070,7 +1070,7 @@ static void fbcon_init(struct vc_data *vc, bool init)
 
 	vc->vc_can_do_color = (fb_get_color_depth(&info->var, &info->fix)!=1);
 	vc->vc_complement_mask = vc->vc_can_do_color ? 0x7700 : 0x0800;
-	if (vc->vc_font.charcount == 256) {
+	if (vc->vc_font.charcount == 256 || vc->vc_font.charcount > 512) {
 		vc->vc_hi_font_mask = 0;
 	} else {
 		vc->vc_hi_font_mask = 0x100;
@@ -1389,7 +1389,7 @@ static void fbcon_set_disp(struct fb_info *info, struct fb_var_screeninfo *var,
 	ops->var = info->var;
 	vc->vc_can_do_color = (fb_get_color_depth(&info->var, &info->fix)!=1);
 	vc->vc_complement_mask = vc->vc_can_do_color ? 0x7700 : 0x0800;
-	if (vc->vc_font.charcount == 256) {
+	if (vc->vc_font.charcount == 256 || vc->vc_font.charcount > 512) {
 		vc->vc_hi_font_mask = 0;
 	} else {
 		vc->vc_hi_font_mask = 0x100;
@@ -1612,6 +1612,7 @@ static void fbcon_redraw_blit(struct vc_data *vc, struct fb_info *info,
 			}
 
 			scr_writew(c, d);
+			scr_writew(scr_readw(s + (vc->vc_screenbuf_size >> 1)), d + (vc->vc_screenbuf_size >> 1));
 			console_conditional_schedule();
 			s++;
 			d++;
@@ -1633,6 +1634,7 @@ static void fbcon_redraw_blit(struct vc_data *vc, struct fb_info *info,
 
 static void fbcon_redraw(struct vc_data *vc, int line, int count, int offset)
 {
+	u16 charmask = vc->vc_hi_font_mask ? 0x1ff : 0xff;
 	unsigned short *d = (unsigned short *)
 	    (vc->vc_origin + vc->vc_size_row * line);
 	unsigned short *s = d + offset;
@@ -1655,18 +1657,22 @@ static void fbcon_redraw(struct vc_data *vc, int line, int count, int offset)
 					start = s;
 				}
 			}
-			if (c == scr_readw(d)) {
-				if (s > start) {
-					fbcon_putcs(vc, start, s - start,
-						     line, x);
-					x += s - start + 1;
-					start = s + 1;
-				} else {
-					x++;
-					start++;
+			if( ((scr_readw(s) & charmask) == 0xff || (scr_readw(s) & charmask) == 0xfe) && scr_readw(s + (vc->vc_screenbuf_size >> 1)) != 0){
+			}else{
+				if (c == scr_readw(d)) {
+					if (s > start) {
+						fbcon_putcs(vc, start, s - start,
+							     line, x);
+						x += s - start + 1;
+						start = s + 1;
+					} else {
+						x++;
+						start++;
+					}
 				}
 			}
 			scr_writew(c, d);
+			scr_writew(scr_readw(s + (vc->vc_screenbuf_size >> 1)), d + (vc->vc_screenbuf_size >> 1));
 			console_conditional_schedule();
 			s++;
 			d++;
@@ -2158,7 +2164,7 @@ static bool fbcon_switch(struct vc_data *vc)
 	vc->vc_can_do_color = (fb_get_color_depth(&info->var, &info->fix)!=1);
 	vc->vc_complement_mask = vc->vc_can_do_color ? 0x7700 : 0x0800;
 
-	if (vc->vc_font.charcount > 256)
+	if (vc->vc_font.charcount > 256 && vc->vc_font.charcount <= 512)
 		vc->vc_complement_mask <<= 1;
 
 	updatescrollmode(p, info, vc);
@@ -2292,7 +2298,7 @@ static int fbcon_get_font(struct vc_data *vc, struct console_font *font, unsigne
 	font->height = vc->vc_font.height;
 	if (font->height > vpitch)
 		return -ENOSPC;
-	font->charcount = vc->vc_hi_font_mask ? 512 : 256;
+	font->charcount = vc->vc_font.charcount;
 	if (!font->data)
 		return 0;
 
@@ -2430,7 +2436,7 @@ static int fbcon_do_set_font(struct vc_data *vc, int w, int h, int charcount,
 	vc->vc_font.width = w;
 	vc->vc_font.height = h;
 	vc->vc_font.charcount = charcount;
-	if (vc->vc_hi_font_mask && charcount == 256)
+	if (vc->vc_hi_font_mask && (charcount == 256 || charcount > 512))
 		set_vc_hi_font(vc, false);
 	else if (!vc->vc_hi_font_mask && charcount == 512)
 		set_vc_hi_font(vc, true);
@@ -2488,11 +2494,6 @@ static int fbcon_set_font(struct vc_data *vc, const struct console_font *font,
 	int i, csum;
 	u8 *new_data, *data = font->data;
 	int pitch = PITCH(font->width);
-
-	/* Is there a reason why fbconsole couldn't handle any charcount >256?
-	 * If not this check should be changed to charcount < 256 */
-	if (charcount != 256 && charcount != 512)
-		return -EINVAL;
 
 	/* font bigger than screen resolution ? */
 	if (w > FBCON_SWAP(info->var.rotate, info->var.xres, info->var.yres) ||
