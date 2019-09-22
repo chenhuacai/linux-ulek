@@ -8,6 +8,8 @@
 #include <linux/shmem_fs.h>
 #include <linux/spinlock.h>
 #include <linux/vmalloc.h>
+#include <linux/dma-noncoherent.h>
+#include <drm/drm_cache.h>
 
 #include "etnaviv_drv.h"
 #include "etnaviv_gem.h"
@@ -350,6 +352,7 @@ void *etnaviv_gem_vmap(struct drm_gem_object *obj)
 
 static void *etnaviv_gem_vmap_impl(struct etnaviv_gem_object *obj)
 {
+	pgprot_t prot;
 	struct page **pages;
 
 	lockdep_assert_held(&obj->lock);
@@ -358,8 +361,19 @@ static void *etnaviv_gem_vmap_impl(struct etnaviv_gem_object *obj)
 	if (IS_ERR(pages))
 		return NULL;
 
-	return vmap(pages, obj->base.size >> PAGE_SHIFT,
-			VM_MAP, pgprot_writecombine(PAGE_KERNEL));
+	switch (obj->flags) {
+		case ETNA_BO_CACHED:
+			prot = PAGE_KERNEL;
+			break;
+		case ETNA_BO_UNCACHED:
+			prot = pgprot_noncached(PAGE_KERNEL);
+			break;
+		case ETNA_BO_WC:
+		default:
+			prot = pgprot_writecombine(PAGE_KERNEL);
+	}
+
+	return vmap(pages, obj->base.size >> PAGE_SHIFT, VM_MAP, prot);
 }
 
 static inline enum dma_data_direction etnaviv_op_to_dma_dir(u32 op)
@@ -403,7 +417,7 @@ int etnaviv_gem_cpu_prep(struct drm_gem_object *obj, u32 op,
 			return ret == 0 ? -ETIMEDOUT : ret;
 	}
 
-	if (etnaviv_obj->flags & ETNA_BO_CACHED) {
+	if (!dev_is_dma_coherent(dev->dev) && etnaviv_obj->flags & ETNA_BO_CACHED) {
 		dma_sync_sg_for_cpu(dev->dev, etnaviv_obj->sgt->sgl,
 				    etnaviv_obj->sgt->nents,
 				    etnaviv_op_to_dma_dir(op));
@@ -418,7 +432,7 @@ int etnaviv_gem_cpu_fini(struct drm_gem_object *obj)
 	struct drm_device *dev = obj->dev;
 	struct etnaviv_gem_object *etnaviv_obj = to_etnaviv_bo(obj);
 
-	if (etnaviv_obj->flags & ETNA_BO_CACHED) {
+	if (!dev_is_dma_coherent(dev->dev) && etnaviv_obj->flags & ETNA_BO_CACHED) {
 		/* fini without a prep is almost certainly a userspace error */
 		WARN_ON(etnaviv_obj->last_cpu_prep_op == 0);
 		dma_sync_sg_for_device(dev->dev, etnaviv_obj->sgt->sgl,
@@ -587,6 +601,13 @@ static int etnaviv_gem_new_impl(struct drm_device *dev, u32 size, u32 flags,
 	if (!etnaviv_obj)
 		return -ENOMEM;
 
+	if (!drm_arch_can_wc_memory()) {
+		if (dev_is_dma_coherent(dev->dev))
+			flags = ETNA_BO_CACHED;
+		else
+			flags = ETNA_BO_UNCACHED;
+	}
+
 	etnaviv_obj->flags = flags;
 	etnaviv_obj->ops = ops;
 
@@ -624,8 +645,12 @@ int etnaviv_gem_new_handle(struct drm_device *dev, struct drm_file *file,
 	 * above new_inode() why this is required _and_ expected if you're
 	 * going to pin these pages.
 	 */
-	mapping_set_gfp_mask(obj->filp->f_mapping, GFP_HIGHUSER |
-			     __GFP_RETRY_MAYFAIL | __GFP_NOWARN);
+	if (*dev->dev->dma_mask > DMA_BIT_MASK(32))
+		mapping_set_gfp_mask(obj->filp->f_mapping,
+			GFP_HIGHUSER | __GFP_RETRY_MAYFAIL | __GFP_NOWARN);
+	else
+		mapping_set_gfp_mask(obj->filp->f_mapping,
+			GFP_USER | GFP_DMA32 | __GFP_RETRY_MAYFAIL | __GFP_NOWARN);
 
 	etnaviv_gem_obj_add(dev, obj);
 
