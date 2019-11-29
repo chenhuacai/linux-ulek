@@ -618,6 +618,10 @@
 # endif
 #endif
 
+#ifndef cpu_has_constant_timer
+# define cpu_has_constant_timer	__opt(MIPS_CPU_CONST_TIMER)
+#endif
+
 /*
  * Guest capabilities
  */
