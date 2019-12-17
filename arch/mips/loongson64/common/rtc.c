@@ -37,6 +37,7 @@ static int __init loongson_rtc_platform_init(void)
 	case LS2H:
 	case LS7A:
 	case RS780E:
+	case VIRTUAL:
 		break;
 	default:
 		platform_device_register(&loongson_rtc_device);
