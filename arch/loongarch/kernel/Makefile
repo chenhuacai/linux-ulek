@@ -77,5 +77,6 @@ obj-$(CONFIG_RETHOOK)		+= rethook.o rethook_trampoline.o
 obj-$(CONFIG_UPROBES)		+= uprobes.o
 
 obj-$(CONFIG_JUMP_LABEL)	+= jump_label.o
+obj-$(CONFIG_SPINLOCK_TEST)	+= spinlock_test.o
 
 CPPFLAGS_vmlinux.lds		:= $(KBUILD_CFLAGS)

@@ -39,3 +39,9 @@ config UNWINDER_ORC
 	  by roughly 2-4MB, depending on your kernel config.
 
 endchoice
+
+config SPINLOCK_TEST
+	tristate "Enable spinlock timing tests in debugfs"
+	default n
+	help
+	  Add several files to the debugfs to test spinlock speed.
