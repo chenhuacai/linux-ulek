@@ -74,6 +74,18 @@ extern unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)];
 
 #define ZERO_PAGE(vaddr)	virt_to_page(empty_zero_page)
 
+#ifdef CONFIG_32BIT
+
+#define VMALLOC_START	(KVRANGE)
+#define VMALLOC_END	(PKMAP_BASE - 2*PAGE_SIZE)
+
+#define PKMAP_BASE	(PKMAP_END - PAGE_SIZE * LAST_PKMAP)
+#define PKMAP_END	((FIXADDR_START) & ~((LAST_PKMAP << PAGE_SHIFT)-1))
+
+#endif
+
+#ifdef CONFIG_64BIT
+
 /*
  * TLB refill handlers may also map the vmalloc area into xkvrange.
  * Avoid the first couple of pages so NULL pointer dereferences will
@@ -105,6 +117,8 @@ extern unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)];
 
 #define KFENCE_AREA_START	(VMEMMAP_END + 1)
 #define KFENCE_AREA_END		(KFENCE_AREA_START + KFENCE_AREA_SIZE - 1)
+
+#endif
 
 #define ptep_get(ptep) READ_ONCE(*(ptep))
 #define pmdp_get(pmdp) READ_ONCE(*(pmdp))

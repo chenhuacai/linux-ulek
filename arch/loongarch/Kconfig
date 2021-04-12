@@ -296,6 +296,11 @@ menu "Kernel type and options"
 
 source "kernel/Kconfig.hz"
 
+config HIGHMEM
+	bool "High Memory Support"
+	depends on 32BIT
+	select KMAP_LOCAL
+
 choice
 	prompt "Page Table Layout"
 	default 16KB_2LEVEL if 32BIT
