@@ -1332,7 +1332,7 @@ static int gfx_v12_0_sw_init(void *handle)
 		adev->gfx.me.num_me = 1;
 		adev->gfx.me.num_pipe_per_me = 1;
 		adev->gfx.me.num_queue_per_pipe = 1;
-		adev->gfx.mec.num_mec = 2;
+		adev->gfx.mec.num_mec = 1;
 		adev->gfx.mec.num_pipe_per_mec = 2;
 		adev->gfx.mec.num_queue_per_pipe = 4;
 		break;
@@ -2395,7 +2395,7 @@ static int gfx_v12_0_cp_gfx_load_me_microcode_rs64(struct amdgpu_device *adev)
 				      (void **)&adev->gfx.me.me_fw_data_ptr);
 	if (r) {
 		dev_err(adev->dev, "(%d) failed to create me data bo\n", r);
-		gfx_v12_0_pfp_fini(adev);
+		gfx_v12_0_me_fini(adev);
 		return r;
 	}
 
@@ -3981,17 +3981,6 @@ static void gfx_v12_0_update_coarse_grain_clock_gating(struct amdgpu_device *ade
 
 		if (def != data)
 			WREG32_SOC15(GC, 0, regRLC_CGCG_CGLS_CTRL_3D, data);
-
-		data = RREG32_SOC15(GC, 0, regSDMA0_RLC_CGCG_CTRL);
-		data &= ~SDMA0_RLC_CGCG_CTRL__CGCG_INT_ENABLE_MASK;
-		WREG32_SOC15(GC, 0, regSDMA0_RLC_CGCG_CTRL, data);
-
-		/* Some ASICs only have one SDMA instance, not need to configure SDMA1 */
-		if (adev->sdma.num_instances > 1) {
-			data = RREG32_SOC15(GC, 0, regSDMA1_RLC_CGCG_CTRL);
-			data &= ~SDMA1_RLC_CGCG_CTRL__CGCG_INT_ENABLE_MASK;
-			WREG32_SOC15(GC, 0, regSDMA1_RLC_CGCG_CTRL, data);
-		}
 	}
 }
 
@@ -4105,7 +4094,7 @@ static int gfx_v12_0_set_clockgating_state(void *handle,
 	if (amdgpu_sriov_vf(adev))
 		return 0;
 
-	switch (adev->ip_versions[GC_HWIP][0]) {
+	switch (amdgpu_ip_version(adev, GC_HWIP, 0)) {
 	case IP_VERSION(12, 0, 0):
 	case IP_VERSION(12, 0, 1):
 		gfx_v12_0_update_gfx_clock_gating(adev,

@@ -664,12 +664,21 @@ static inline char *ublk_queue_cmd_buf(struct ublk_device *ub, int q_id)
 	return ublk_get_queue(ub, q_id)->io_cmd_buf;
 }
 
+static inline int __ublk_queue_cmd_buf_size(int depth)
+{
+	return round_up(depth * sizeof(struct ublksrv_io_desc), PAGE_SIZE);
+}
+
 static inline int ublk_queue_cmd_buf_size(struct ublk_device *ub, int q_id)
 {
 	struct ublk_queue *ubq = ublk_get_queue(ub, q_id);
 
-	return round_up(ubq->q_depth * sizeof(struct ublksrv_io_desc),
-			PAGE_SIZE);
+	return __ublk_queue_cmd_buf_size(ubq->q_depth);
+}
+
+static int ublk_max_cmd_buf_size(void)
+{
+	return __ublk_queue_cmd_buf_size(UBLK_MAX_QUEUE_DEPTH);
 }
 
 static inline bool ublk_queue_can_use_recovery_reissue(
@@ -1322,7 +1331,7 @@ static int ublk_ch_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	struct ublk_device *ub = filp->private_data;
 	size_t sz = vma->vm_end - vma->vm_start;
-	unsigned max_sz = UBLK_MAX_QUEUE_DEPTH * sizeof(struct ublksrv_io_desc);
+	unsigned max_sz = ublk_max_cmd_buf_size();
 	unsigned long pfn, end, phys_off = vma->vm_pgoff << PAGE_SHIFT;
 	int q_id, ret = 0;
 
@@ -1407,17 +1416,27 @@ static void ublk_abort_queue(struct ublk_device *ub, struct ublk_queue *ubq)
 	}
 }
 
-static bool ublk_abort_requests(struct ublk_device *ub, struct ublk_queue *ubq)
+/* Must be called when queue is frozen */
+static bool ublk_mark_queue_canceling(struct ublk_queue *ubq)
 {
-	struct gendisk *disk;
+	bool canceled;
 
 	spin_lock(&ubq->cancel_lock);
-	if (ubq->canceling) {
-		spin_unlock(&ubq->cancel_lock);
-		return false;
-	}
-	ubq->canceling = true;
+	canceled = ubq->canceling;
+	if (!canceled)
+		ubq->canceling = true;
 	spin_unlock(&ubq->cancel_lock);
+
+	return canceled;
+}
+
+static bool ublk_abort_requests(struct ublk_device *ub, struct ublk_queue *ubq)
+{
+	bool was_canceled = ubq->canceling;
+	struct gendisk *disk;
+
+	if (was_canceled)
+		return false;
 
 	spin_lock(&ub->lock);
 	disk = ub->ub_disk;
@@ -1429,14 +1448,23 @@ static bool ublk_abort_requests(struct ublk_device *ub, struct ublk_queue *ubq)
 	if (!disk)
 		return false;
 
-	/* Now we are serialized with ublk_queue_rq() */
+	/*
+	 * Now we are serialized with ublk_queue_rq()
+	 *
+	 * Make sure that ubq->canceling is set when queue is frozen,
+	 * because ublk_queue_rq() has to rely on this flag for avoiding to
+	 * touch completed uring_cmd
+	 */
 	blk_mq_quiesce_queue(disk->queue);
-	/* abort queue is for making forward progress */
-	ublk_abort_queue(ub, ubq);
+	was_canceled = ublk_mark_queue_canceling(ubq);
+	if (!was_canceled) {
+		/* abort queue is for making forward progress */
+		ublk_abort_queue(ub, ubq);
+	}
 	blk_mq_unquiesce_queue(disk->queue);
 	put_device(disk_to_dev(disk));
 
-	return true;
+	return !was_canceled;
 }
 
 static void ublk_cancel_cmd(struct ublk_queue *ubq, struct ublk_io *io,
@@ -1590,6 +1618,21 @@ static void ublk_unquiesce_dev(struct ublk_device *ub)
 	blk_mq_kick_requeue_list(ub->ub_disk->queue);
 }
 
+static struct gendisk *ublk_detach_disk(struct ublk_device *ub)
+{
+	struct gendisk *disk;
+
+	/* Sync with ublk_abort_queue() by holding the lock */
+	spin_lock(&ub->lock);
+	disk = ub->ub_disk;
+	ub->dev_info.state = UBLK_S_DEV_DEAD;
+	ub->dev_info.ublksrv_pid = -1;
+	ub->ub_disk = NULL;
+	spin_unlock(&ub->lock);
+
+	return disk;
+}
+
 static void ublk_stop_dev(struct ublk_device *ub)
 {
 	struct gendisk *disk;
@@ -1603,14 +1646,7 @@ static void ublk_stop_dev(struct ublk_device *ub)
 		ublk_unquiesce_dev(ub);
 	}
 	del_gendisk(ub->ub_disk);
-
-	/* Sync with ublk_abort_queue() by holding the lock */
-	spin_lock(&ub->lock);
-	disk = ub->ub_disk;
-	ub->dev_info.state = UBLK_S_DEV_DEAD;
-	ub->dev_info.ublksrv_pid = -1;
-	ub->ub_disk = NULL;
-	spin_unlock(&ub->lock);
+	disk = ublk_detach_disk(ub);
 	put_disk(disk);
  unlock:
 	mutex_unlock(&ub->mutex);
@@ -2286,7 +2322,7 @@ static int ublk_ctrl_start_dev(struct ublk_device *ub, struct io_uring_cmd *cmd)
 
 out_put_cdev:
 	if (ret) {
-		ub->dev_info.state = UBLK_S_DEV_DEAD;
+		ublk_detach_disk(ub);
 		ublk_put_device(ub);
 	}
 	if (ret)
@@ -2648,9 +2684,12 @@ static int ublk_ctrl_set_params(struct ublk_device *ub,
 	if (ph.len > sizeof(struct ublk_params))
 		ph.len = sizeof(struct ublk_params);
 
-	/* parameters can only be changed when device isn't live */
 	mutex_lock(&ub->mutex);
-	if (ub->dev_info.state == UBLK_S_DEV_LIVE) {
+	if (test_bit(UB_STATE_USED, &ub->state)) {
+		/*
+		 * Parameters can only be changed when device hasn't
+		 * been started yet
+		 */
 		ret = -EACCES;
 	} else if (copy_from_user(&ub->params, argp, ph.len)) {
 		ret = -EFAULT;
@@ -2965,7 +3004,7 @@ static int ublk_ctrl_uring_cmd(struct io_uring_cmd *cmd,
 		ret = ublk_ctrl_end_recovery(ub, cmd);
 		break;
 	default:
-		ret = -ENOTSUPP;
+		ret = -EOPNOTSUPP;
 		break;
 	}
 

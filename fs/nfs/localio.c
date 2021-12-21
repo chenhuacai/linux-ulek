@@ -331,7 +331,7 @@ nfs_local_pgio_done(struct nfs_pgio_header *hdr, long status)
 		hdr->res.op_status = NFS4_OK;
 		hdr->task.tk_status = 0;
 	} else {
-		hdr->res.op_status = nfs4_stat_to_errno(status);
+		hdr->res.op_status = nfs_localio_errno_to_nfs4_stat(status);
 		hdr->task.tk_status = status;
 	}
 }
@@ -353,6 +353,12 @@ nfs_local_read_done(struct nfs_local_kiocb *iocb, long status)
 	struct file *filp = iocb->kiocb.ki_filp;
 
 	nfs_local_pgio_done(hdr, status);
+
+	/*
+	 * Must clear replen otherwise NFSv3 data corruption will occur
+	 * if/when switching from LOCALIO back to using normal RPC.
+	 */
+	hdr->res.replen = 0;
 
 	if (hdr->res.count != hdr->args.count ||
 	    hdr->args.offset + hdr->res.count >= i_size_read(file_inode(filp)))
@@ -663,7 +669,7 @@ nfs_local_commit_done(struct nfs_commit_data *data, int status)
 		data->task.tk_status = 0;
 	} else {
 		nfs_reset_boot_verifier(data->inode);
-		data->res.op_status = nfs4_stat_to_errno(status);
+		data->res.op_status = nfs_localio_errno_to_nfs4_stat(status);
 		data->task.tk_status = status;
 	}
 }

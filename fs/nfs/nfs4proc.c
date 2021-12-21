@@ -2603,11 +2603,13 @@ static void nfs4_open_release(void *calldata)
 	struct nfs4_opendata *data = calldata;
 	struct nfs4_state *state = NULL;
 
+	/* In case of error, no cleanup! */
+	if (data->rpc_status != 0 || !data->rpc_done) {
+		nfs_release_seqid(data->o_arg.seqid);
+		goto out_free;
+	}
 	/* If this request hasn't been cancelled, do nothing */
 	if (!data->cancelled)
-		goto out_free;
-	/* In case of error, no cleanup! */
-	if (data->rpc_status != 0 || !data->rpc_done)
 		goto out_free;
 	/* In case we need an open_confirm, no cleanup! */
 	if (data->o_res.rflags & NFS4_OPEN_RESULT_CONFIRM)
@@ -3896,8 +3898,11 @@ nfs4_atomic_open(struct inode *dir, struct nfs_open_context *ctx,
 
 static void nfs4_close_context(struct nfs_open_context *ctx, int is_sync)
 {
+	struct dentry *dentry = ctx->dentry;
 	if (ctx->state == NULL)
 		return;
+	if (dentry->d_flags & DCACHE_NFSFS_RENAMED)
+		nfs4_inode_set_return_delegation_on_close(d_inode(dentry));
 	if (is_sync)
 		nfs4_close_sync(ctx->state, _nfs4_ctx_to_openmode(ctx));
 	else

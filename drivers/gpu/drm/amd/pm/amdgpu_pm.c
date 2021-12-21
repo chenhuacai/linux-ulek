@@ -1409,7 +1409,11 @@ static ssize_t amdgpu_set_pp_mclk_od(struct device *dev,
  * create a custom set of heuristics, write a string of numbers to the file
  * starting with the number of the custom profile along with a setting
  * for each heuristic parameter.  Due to differences across asic families
- * the heuristic parameters vary from family to family.
+ * the heuristic parameters vary from family to family. Additionally,
+ * you can apply the custom heuristics to different clock domains.  Each
+ * clock domain is considered a distinct operation so if you modify the
+ * gfxclk heuristics and then the memclk heuristics, the all of the
+ * custom heuristics will be retained until you switch to another profile.
  *
  */
 
@@ -2489,6 +2493,8 @@ static int default_attr_update(struct amdgpu_device *adev, struct amdgpu_device_
 		case IP_VERSION(11, 0, 1):
 		case IP_VERSION(11, 0, 2):
 		case IP_VERSION(11, 0, 3):
+		case IP_VERSION(12, 0, 0):
+		case IP_VERSION(12, 0, 1):
 			*states = ATTR_STATE_SUPPORTED;
 			break;
 		default:
