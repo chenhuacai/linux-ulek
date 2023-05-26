@@ -1104,6 +1104,12 @@ bool msi_match_device_irq_domain(struct device *dev, unsigned int domid,
 	return ret;
 }
 
+/*
+ * Return Val:
+ * = 0: Success;
+ * > 0: The modified nvec;
+ * < 0: Error code.
+ */
 static int msi_domain_prepare_irqs(struct irq_domain *domain, struct device *dev,
 				   int nvec, msi_alloc_info_t *arg)
 {
@@ -1232,8 +1238,10 @@ static int __msi_domain_alloc_irqs(struct device *dev, struct irq_domain *domain
 	int i, ret, virq;
 
 	ret = msi_domain_prepare_irqs(domain, dev, ctrl->nirqs, &arg);
-	if (ret)
+	if (ret < 0)
 		return ret;
+	if (ret > 0)
+		ctrl->nirqs = ret;
 
 	/*
 	 * This flag is set by the PCI layer as we need to activate
