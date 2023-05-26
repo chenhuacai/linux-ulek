@@ -68,6 +68,28 @@ static void pch_msi_compose_msi_msg(struct irq_data *data,
 	msg->data = data->hwirq;
 }
 
+#define DEFAULT_MSI_LIMITS 256
+
+static int pch_msi_limits = DEFAULT_MSI_LIMITS;
+
+static int __init pch_msi_limit(char *str)
+{
+	get_option(&str, &pch_msi_limits);
+
+	if (pch_msi_limits <= 0)
+		pch_msi_limits = DEFAULT_MSI_LIMITS;
+
+	return 0;
+}
+
+early_param("loongson_msi_limit", pch_msi_limit);
+
+static int pch_msi_prepare(struct irq_domain *domain, struct device *dev, int nvec, msi_alloc_info_t *arg)
+{
+	memset(arg, 0, sizeof(*arg));
+	return clamp_val(nvec, 0, pch_msi_limits);
+}
+
 static struct irq_chip middle_irq_chip = {
 	.name			= "PCH MSI",
 	.irq_mask		= irq_chip_mask_parent,
@@ -143,13 +165,20 @@ static const struct irq_domain_ops pch_msi_middle_domain_ops = {
 				 MSI_FLAG_PCI_MSIX      |	\
 				 MSI_FLAG_MULTI_PCI_MSI)
 
+static bool pch_msi_init_dev_msi_info(struct device *dev, struct irq_domain *domain,
+				      struct irq_domain *real_parent, struct msi_domain_info *info)
+{
+	info->ops->msi_prepare = pch_msi_prepare;
+	return msi_lib_init_dev_msi_info(dev, domain, real_parent, info);
+}
+
 static struct msi_parent_ops pch_msi_parent_ops = {
 	.required_flags		= PCH_MSI_FLAGS_REQUIRED,
 	.supported_flags	= PCH_MSI_FLAGS_SUPPORTED,
 	.bus_select_mask	= MATCH_PCI_MSI,
 	.bus_select_token	= DOMAIN_BUS_NEXUS,
 	.prefix			= "PCH-",
-	.init_dev_msi_info	= msi_lib_init_dev_msi_info,
+	.init_dev_msi_info	= pch_msi_init_dev_msi_info,
 };
 
 static int pch_msi_init_domains(struct pch_msi_data *priv,
