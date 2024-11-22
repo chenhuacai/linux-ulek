@@ -22,6 +22,10 @@
 #include <linux/static_call_types.h>
 #include <linux/string.h>
 
+#ifndef EM_LOONGARCH
+#define EM_LOONGARCH		258
+#endif
+
 struct alternative {
 	struct alternative *next;
 	struct instruction *insn;
@@ -673,6 +677,18 @@ static int add_dead_ends(struct objtool_file *file)
 		}
 
 		insn->dead_end = false;
+
+		/* Handle the special cases compiled with Clang on LoongArch */
+		if (file->elf->ehdr.e_machine == EM_LOONGARCH &&
+		    reloc->sym->type == STT_SECTION) {
+			while (insn && insn_func(insn)) {
+				insn = prev_insn_same_sym(file, insn);
+				if (insn && insn->dead_end) {
+					insn->dead_end = false;
+					break;
+				}
+			}
+		}
 	}
 
 	return 0;
