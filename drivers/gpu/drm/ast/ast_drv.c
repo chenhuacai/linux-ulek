@@ -32,9 +32,12 @@
 
 #include <drm/drm_aperture.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_cache.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fbdev_shmem.h>
+#include <drm/drm_fbdev_ttm.h>
 #include <drm/drm_gem_shmem_helper.h>
+#include <drm/drm_gem_vram_helper.h>
 #include <drm/drm_module.h>
 #include <drm/drm_probe_helper.h>
 
@@ -45,13 +48,18 @@ static int ast_modeset = -1;
 MODULE_PARM_DESC(modeset, "Disable/Enable modesetting");
 module_param_named(modeset, ast_modeset, int, 0400);
 
+int ast_shmem = -1;
+
+MODULE_PARM_DESC(shmem, "1 = SHMEM helper, 0 = VRAM helper, -1 = Auto");
+module_param_named(shmem, ast_shmem, int, 0400);
+
 /*
  * DRM driver
  */
 
 DEFINE_DRM_GEM_FOPS(ast_fops);
 
-static const struct drm_driver ast_driver = {
+static struct drm_driver ast_driver = {
 	.driver_features = DRIVER_ATOMIC |
 			   DRIVER_GEM |
 			   DRIVER_MODESET,
@@ -63,8 +71,6 @@ static const struct drm_driver ast_driver = {
 	.major = DRIVER_MAJOR,
 	.minor = DRIVER_MINOR,
 	.patchlevel = DRIVER_PATCHLEVEL,
-
-	DRM_GEM_SHMEM_DRIVER_OPS
 };
 
 /*
@@ -279,6 +285,18 @@ static int ast_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	struct drm_device *drm;
 	bool need_post = false;
 
+	if (ast_shmem == -1)
+		ast_shmem = drm_arch_can_wc_memory() ? 1 : 0;
+
+	if (ast_shmem) {
+		ast_driver.dumb_create = drm_gem_shmem_dumb_create;
+		ast_driver.gem_prime_import_sg_table = drm_gem_shmem_prime_import_sg_table;
+	} else {
+		ast_driver.dumb_create = drm_gem_vram_driver_dumb_create;
+		ast_driver.dumb_map_offset = drm_gem_ttm_dumb_map_offset;
+		ast_driver.debugfs_init = drm_vram_mm_debugfs_init;
+	}
+
 	ret = drm_aperture_remove_conflicting_pci_framebuffers(pdev, &ast_driver);
 	if (ret)
 		return ret;
@@ -360,7 +378,10 @@ static int ast_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (ret)
 		return ret;
 
-	drm_fbdev_shmem_setup(drm, 32);
+	if (!ast_shmem)
+		drm_fbdev_ttm_setup(drm, 32);
+	else
+		drm_fbdev_shmem_setup(drm, 32);
 
 	return 0;
 }
