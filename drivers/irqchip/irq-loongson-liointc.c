@@ -128,6 +128,11 @@ static int liointc_set_type(struct irq_data *data, unsigned int type)
 		liointc_set_bit(gc, LIOINTC_REG_INTC_EDGE, mask, false);
 		liointc_set_bit(gc, LIOINTC_REG_INTC_POL, mask, true);
 		break;
+	case IRQ_TYPE_EDGE_BOTH:
+		liointc_set_bit(gc, LIOINTC_REG_INTC_EDGE, mask, true);
+		/* Requester need "both", keep LIOINTC_REG_INTC_POL as is */
+		pr_notice("Use EDGE_RISING/EDGE_FALLING to simulate EDGE_BOTH\n");
+		break;
 	case IRQ_TYPE_EDGE_RISING:
 		liointc_set_bit(gc, LIOINTC_REG_INTC_EDGE, mask, true);
 		liointc_set_bit(gc, LIOINTC_REG_INTC_POL, mask, false);
